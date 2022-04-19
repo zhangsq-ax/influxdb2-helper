@@ -1,14 +1,8 @@
 package influxdb2_helper
 
 import (
-	"context"
-	"fmt"
 	"os"
-	"strings"
 	"testing"
-	"time"
-
-	"github.com/stretchr/testify/assert"
 )
 
 var helper *InfluxdbHelper
@@ -31,17 +25,17 @@ func TestNewInfluxdbHelper(t *testing.T) {
 	assert.NoError(t, err)
 } */
 
-func TestQueryOptions(t *testing.T) {
-	/* opts := &QueryOptions{
-		TimeRange:   [2]int64{1644924507758, 1644925793289},
-		Measurement: "robot_state",
-		Where: map[string]string{
-			"deviceId": "718220110000202",
-		},
-		Fields: []string{"x", "y", "yaw"},
-	} */
+/*func TestQueryOptions(t *testing.T) {
+/* opts := &QueryOptions{
+	TimeRange:   [2]int64{1644924507758, 1644925793289},
+	Measurement: "robot_state",
+	Where: map[string]string{
+		"deviceId": "718220110000202",
+	},
+	Fields: []string{"x", "y", "yaw"},
+} */
 
-	timeRange := [2]int64{1644924507758, 1644925793289}
+/*timeRange := [2]int64{1644924507758, 1644925793289}
 
 	opts := &QueryOptions{
 		TimeRange:   &timeRange,
@@ -73,9 +67,9 @@ func TestInfluxdbHelper_Query(t *testing.T) {
 	for result.Next() {
 		fmt.Println(result.Record().Values())
 	}
-}
+}*/
 
-type QueryOptions struct {
+/*type QueryOptions struct {
 	TimeRange   *[2]int64
 	Measurement string
 	Where       map[string]string
@@ -122,4 +116,4 @@ func (qo *QueryOptions) ToString(bucketName string) (string, error) {
 	query = append(query, `pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`)
 
 	return strings.Join(query, "\n|> "), nil
-}
+}*/
