@@ -36,7 +36,7 @@ func (qo *QueryOptions) String() (string, error) {
 
 	// where clause
 	where := []string{}
-	if qo.Where != nil {
+	if qo.Where != nil && len(qo.Where) > 0 {
 		for key, val := range qo.Where {
 			where = append(where, fmt.Sprintf(`r["%s"] == "%s"`, key, val))
 		}
