@@ -40,8 +40,8 @@ func (qo *QueryOptions) String() (string, error) {
 		for key, val := range qo.Where {
 			where = append(where, fmt.Sprintf(`r["%s"] == "%s"`, key, val))
 		}
+		query = append(query, fmt.Sprintf(`filter(fn: (r) => %s)`, strings.Join(where, " and ")))
 	}
-	query = append(query, fmt.Sprintf(`filter(fn: (r) => %s)`, strings.Join(where, " and ")))
 
 	// select clause
 	if qo.Fields != nil && len(qo.Fields) > 0 {
