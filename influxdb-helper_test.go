@@ -31,6 +31,7 @@ func TestInfluxdbHelper_Query(t *testing.T) {
 		},
 		Fields: []string{"rawData"},
 	}
+	fmt.Println(queryOptions.Measurement)
 	query, err := queryOptions.String()
 	assert.NoError(t, err)
 	t.Log(query)

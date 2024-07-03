@@ -49,7 +49,23 @@ func (ih *InfluxdbHelper) Write(ctx context.Context, point ...*write.Point) erro
 	return writeAPI.WritePoint(ctx, point...)
 }
 
+func (ih *InfluxdbHelper) WriteByGenerator(ctx context.Context, generator func(data []byte, measurement string) (*write.Point, error), data []byte, measurement string) error {
+	point, err := generator(data, measurement)
+	if err != nil {
+		return err
+	}
+	return ih.Write(ctx, point)
+}
+
 func (ih *InfluxdbHelper) Query(ctx context.Context, query string) (*api.QueryTableResult, error) {
 	queryAPI := ih.getQueryAPI()
 	return queryAPI.Query(ctx, query)
+}
+
+func (ih *InfluxdbHelper) QueryByOptions(ctx context.Context, opts *QueryOptions) (*api.QueryTableResult, error) {
+	query, err := opts.String()
+	if err != nil {
+		return nil, err
+	}
+	return ih.Query(ctx, query)
 }
