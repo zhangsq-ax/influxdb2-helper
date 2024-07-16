@@ -69,3 +69,16 @@ func (ih *InfluxdbHelper) QueryByOptions(ctx context.Context, opts *QueryOptions
 	}
 	return ih.Query(ctx, query)
 }
+
+func (ih *InfluxdbHelper) NewQueryOptions(measurement string, where map[string]string, fields []string, startTime int64, endTime int64, limit int64, offset int64) *QueryOptions {
+	timeRange := [2]int64{startTime, endTime}
+	return &QueryOptions{
+		TimeRange:   &timeRange,
+		BucketName:  ih.opts.BucketName,
+		Measurement: measurement,
+		Where:       where,
+		Fields:      fields,
+		Limit:       limit,
+		Offset:      offset,
+	}
+}

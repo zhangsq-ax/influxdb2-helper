@@ -11,6 +11,8 @@ type QueryOptions struct {
 	Measurement string
 	Where       map[string]string
 	Fields      []string
+	Limit       int64
+	Offset      int64
 }
 
 func (qo *QueryOptions) String() (string, error) {
@@ -54,6 +56,11 @@ func (qo *QueryOptions) String() (string, error) {
 
 	// pivot clause
 	query = append(query, `pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`)
+
+	// pagination
+	if qo.Limit > 0 {
+		query = append(query, fmt.Sprintf(`limit(n: %d, offset: %d)`, qo.Limit, qo.Offset))
+	}
 
 	return strings.Join(query, "\n|> "), nil
 }
