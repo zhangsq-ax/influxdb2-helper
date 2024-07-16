@@ -44,6 +44,10 @@ func (ih *InfluxdbHelper) getQueryAPI() api.QueryAPI {
 	return ih.queryAPI
 }
 
+func (ih *InfluxdbHelper) BucketName() string {
+	return ih.opts.BucketName
+}
+
 func (ih *InfluxdbHelper) Write(ctx context.Context, point ...*write.Point) error {
 	writeAPI := ih.getWriteAPI()
 	return writeAPI.WritePoint(ctx, point...)
