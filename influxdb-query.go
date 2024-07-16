@@ -10,15 +10,13 @@ type QueryOptions struct {
 	BucketName  string
 	Measurement string
 	Where       map[string]string
-	Fields      []string
+	Columns     []string
 	Limit       int64
 	Offset      int64
+	DescSort    bool
 }
 
-func (qo *QueryOptions) String() (string, error) {
-	if qo.TimeRange == nil {
-		return "", fmt.Errorf("the TimeRange is required")
-	}
+func (qo *QueryOptions) String() string {
 	startTime := qo.TimeRange[0] / 1000
 	endTime := qo.TimeRange[1]/1000 + 1
 
@@ -31,9 +29,6 @@ func (qo *QueryOptions) String() (string, error) {
 	query = append(query, fmt.Sprintf(`range(start: %d, stop: %d)`, startTime, endTime))
 
 	// measurement clause
-	if qo.Measurement == "" {
-		return "", fmt.Errorf("the Measurement is required")
-	}
 	query = append(query, fmt.Sprintf(`filter(fn: (r) => r["_measurement"] == "%s")`, qo.Measurement))
 
 	// where clause
@@ -46,21 +41,31 @@ func (qo *QueryOptions) String() (string, error) {
 	}
 
 	// select clause
-	if qo.Fields != nil && len(qo.Fields) > 0 {
+	/* if qo.Fields != nil && len(qo.Fields) > 0 {
 		selectClause := []string{}
 		for _, field := range qo.Fields {
 			selectClause = append(selectClause, fmt.Sprintf(`r["_field"] == "%s"`, field))
 		}
 		query = append(query, fmt.Sprintf(`filter(fn: (r) => %s)`, strings.Join(selectClause, " or ")))
-	}
+	} */
 
 	// pivot clause
 	query = append(query, `pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`)
+
+	// sort clause
+	if qo.DescSort {
+		query = append(query, `sort(columns: ["_time"], desc: true)`)
+	}
+
+	// select clause
+	if qo.Columns != nil && len(qo.Columns) > 0 {
+		query = append(query, fmt.Sprintf(`keep(columns: ["%s"])`, strings.Join(qo.Columns, `","`)))
+	}
 
 	// pagination
 	if qo.Limit > 0 {
 		query = append(query, fmt.Sprintf(`limit(n: %d, offset: %d)`, qo.Limit, qo.Offset))
 	}
 
-	return strings.Join(query, "\n|> "), nil
+	return strings.Join(query, "\n|> ")
 }

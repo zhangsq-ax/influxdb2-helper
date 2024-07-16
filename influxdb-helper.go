@@ -49,7 +49,7 @@ func (ih *InfluxdbHelper) Write(ctx context.Context, point ...*write.Point) erro
 	return writeAPI.WritePoint(ctx, point...)
 }
 
-func (ih *InfluxdbHelper) WriteByGenerator(ctx context.Context, generator func(data []byte, measurement string) (*write.Point, error), data []byte, measurement string) (*write.Point, error) {
+func (ih *InfluxdbHelper) WriteByGenerator(ctx context.Context, measurement string, data any, generator func(data any, measurement string) (*write.Point, error)) (*write.Point, error) {
 	point, err := generator(data, measurement)
 	if err != nil {
 		return nil, err
@@ -63,21 +63,17 @@ func (ih *InfluxdbHelper) Query(ctx context.Context, query string) (*api.QueryTa
 }
 
 func (ih *InfluxdbHelper) QueryByOptions(ctx context.Context, opts *QueryOptions) (*api.QueryTableResult, error) {
-	query, err := opts.String()
-	if err != nil {
-		return nil, err
-	}
-	return ih.Query(ctx, query)
+	return ih.Query(ctx, opts.String())
 }
 
-func (ih *InfluxdbHelper) NewQueryOptions(measurement string, where map[string]string, fields []string, startTime int64, endTime int64, limit int64, offset int64) *QueryOptions {
+func (ih *InfluxdbHelper) NewQueryOptions(measurement string, where map[string]string, columns []string, startTime int64, endTime int64, limit int64, offset int64) *QueryOptions {
 	timeRange := [2]int64{startTime, endTime}
 	return &QueryOptions{
 		TimeRange:   &timeRange,
 		BucketName:  ih.opts.BucketName,
 		Measurement: measurement,
 		Where:       where,
-		Fields:      fields,
+		Columns:     columns,
 		Limit:       limit,
 		Offset:      offset,
 	}
