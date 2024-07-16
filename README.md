@@ -52,7 +52,7 @@ or
 
 ```go
 ...
-queryOpts := helper.NewQueryOptions("iot_state", map[string]string{}, ["_time", "deviceId", "..."], 1721059200000, 1721106016000, 100, 0)
+queryOpts := helper.NewQueryOptions("iot_state", map[string]string{}, []string{"_time", "deviceId", "..."}, 1721059200000, 1721106016000, 100, 0)
 ...
 ```
 
@@ -211,8 +211,107 @@ if err != nil {
 ```go
 package main
 
-import(
-  idbHelper "github.com
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
+	"github.com/influxdata/influxdb-client-go/v2/api/write"
+	idbHelper "github.com/zhangsq-ax/influxdb2-helper"
+	"os"
+	"time"
 )
+
+type Location struct {
+	X   float64 `json:"x" writePoint:"x,field"`
+	Y   float64 `json:"y" writePoint:"y,field"`
+	Yaw float64 `json:"yaw" writePoint:"yaw,field"`
+}
+type State struct {
+	DeviceId  string    `json:"deviceId" writePoint:"deviceId,tag"`
+	Location  *Location `json:"location"`
+	Timestamp int64     `json:"timestamp" writePoint:",time"`
+}
+
+var (
+	stateData = `{"deviceId": "xxxxxxxx", "location": {"x": 0, "y": 0, "yaw": 0}, "timestamp": 0}`
+)
+
+func main() {
+	opts := &idbHelper.InfluxdbHelperOptions{
+		ServerUrl:  os.Getenv("SERVER_URL"),
+		Token:      os.Getenv("TOKEN"),
+		OrgName:    os.Getenv("ORG_NAME"),
+		BucketName: os.Getenv("BUCKET_NAME"),
+	}
+	helper := idbHelper.NewInfluxdbHelper(opts)
+
+	// write point1 by struct
+	point, err := idbHelper.ParseStructToWritePoint("iot_state", newState(""))
+	if err != nil {
+		panic(err)
+	}
+	err = helper.Write(context.Background(), point)
+	if err != nil {
+		panic(err)
+	}
+
+	// write point2 by generator
+	state := newState("yyyyyyyy")
+	_, err = helper.WriteByGenerator(context.Background(), "iot_state", state, func(data any, measurement string) (*write.Point, error) {
+		state, ok := data.(*State)
+		if !ok {
+			return nil, fmt.Errorf("data type error")
+		}
+		ts := state.Timestamp
+		fields := map[string]any{
+			"x":   state.Location.X,
+			"y":   state.Location.Y,
+			"yaw": state.Location.Yaw,
+		}
+		tags := map[string]string{
+			"deviceId": state.DeviceId,
+		}
+
+		return influxdb2.NewPoint(measurement, tags, fields, time.UnixMilli(ts)), nil
+	})
+
+	time.Sleep(5 * time.Second)
+
+	// query
+	queryOpts := &idbHelper.QueryOptions{
+		TimeRange:   &[2]int64{time.Now().Add(-1 * time.Hour).UnixMilli(), time.Now().UnixMilli()},
+		BucketName:  os.Getenv("BUCKET_NAME"),
+		Measurement: "iot_state",
+		Columns: []string{
+			"_time",
+			"deviceId",
+			"x",
+			"y",
+			"yaw",
+		},
+		Limit:    100,
+		DescSort: true,
+	}
+	result, err := helper.Query(context.Background(), queryOpts.String())
+	if err != nil {
+		panic(err)
+	}
+	for result.Next() {
+		fmt.Println(result.Record().Values())
+	}
+}
+
+func newState(deviceId string) *State {
+	state := &State{}
+	_ = json.Unmarshal([]byte(stateData), state)
+	state.Timestamp = time.Now().UnixMilli()
+	if deviceId != "" {
+		state.DeviceId = deviceId
+	}
+
+	return state
+}
+
 ```
 
