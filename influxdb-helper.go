@@ -2,7 +2,6 @@ package influxdb2_helper
 
 import (
 	"context"
-
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/influxdata/influxdb-client-go/v2/api/write"
@@ -68,6 +67,21 @@ func (ih *InfluxdbHelper) Query(ctx context.Context, query string) (*api.QueryTa
 
 func (ih *InfluxdbHelper) QueryByOptions(ctx context.Context, opts *QueryOptions) (*api.QueryTableResult, error) {
 	return ih.Query(ctx, opts.String())
+}
+
+// Count returns the count of the column in the query
+// column must be a field in the measurement, not a tag
+func (ih *InfluxdbHelper) Count(ctx context.Context, opts *QueryOptions, column string) (int64, error) {
+	query := opts.CountString(column)
+	result, err := ih.Query(ctx, query)
+	if err != nil {
+		return 0, err
+	}
+	count := int64(0)
+	for result.Next() {
+		count += result.Record().ValueByKey(column).(int64)
+	}
+	return count, nil
 }
 
 func (ih *InfluxdbHelper) NewQueryOptions(measurement string, where map[string]string, columns []string, startTime int64, endTime int64, limit int64, offset int64) *QueryOptions {

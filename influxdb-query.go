@@ -40,15 +40,6 @@ func (qo *QueryOptions) String() string {
 		query = append(query, fmt.Sprintf(`filter(fn: (r) => %s)`, strings.Join(where, " and ")))
 	}
 
-	// select clause
-	/* if qo.Fields != nil && len(qo.Fields) > 0 {
-		selectClause := []string{}
-		for _, field := range qo.Fields {
-			selectClause = append(selectClause, fmt.Sprintf(`r["_field"] == "%s"`, field))
-		}
-		query = append(query, fmt.Sprintf(`filter(fn: (r) => %s)`, strings.Join(selectClause, " or ")))
-	} */
-
 	// pivot clause
 	query = append(query, `pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`)
 
@@ -66,6 +57,34 @@ func (qo *QueryOptions) String() string {
 	if qo.Limit > 0 {
 		query = append(query, fmt.Sprintf(`limit(n: %d, offset: %d)`, qo.Limit, qo.Offset))
 	}
+
+	return strings.Join(query, "\n|> ")
+}
+
+func (qo *QueryOptions) CountString(column string) string {
+	startTime := qo.TimeRange[0] / 1000
+	endTime := qo.TimeRange[1]/1000 + 1
+
+	query := []string{}
+
+	// from clause
+	query = append(query, fmt.Sprintf(`from(bucket: "%s")`, qo.BucketName))
+
+	// time range clause
+	query = append(query, fmt.Sprintf(`range(start: %d, stop: %d)`, startTime, endTime))
+
+	// measurement clause
+	query = append(query, fmt.Sprintf(`filter(fn: (r) => r["_measurement"] == "%s")`, qo.Measurement))
+
+	// only select specified column
+	query = append(query, fmt.Sprintf(`filter(fn: (r) => r["_field"] == "%s")`, column))
+
+	// pivot clause
+	query = append(query, `pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`)
+
+	query = append(query, fmt.Sprintf(`keep(columns: ["%s"])`, column))
+
+	query = append(query, fmt.Sprintf(`count(column: "%s")`, column))
 
 	return strings.Join(query, "\n|> ")
 }
