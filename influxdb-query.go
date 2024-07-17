@@ -49,6 +49,8 @@ func (qo *QueryOptions) String() string {
 	// sort clause
 	if qo.DescSort {
 		query = append(query, `sort(columns: ["_time"], desc: true)`)
+	} else {
+		query = append(query, `sort(columns: ["_time"])`)
 	}
 
 	// select clause
