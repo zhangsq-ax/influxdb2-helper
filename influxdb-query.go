@@ -43,6 +43,9 @@ func (qo *QueryOptions) String() string {
 	// pivot clause
 	query = append(query, `pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`)
 
+	// force tags not to be grouped
+	query = append(query, `group(columns: [])`)
+
 	// sort clause
 	if qo.DescSort {
 		query = append(query, `sort(columns: ["_time"], desc: true)`)
