@@ -76,6 +76,15 @@ func (qo *QueryOptions) CountString(column string) string {
 	// measurement clause
 	query = append(query, fmt.Sprintf(`filter(fn: (r) => r["_measurement"] == "%s")`, qo.Measurement))
 
+	// where clause
+	where := []string{}
+	if qo.Where != nil && len(qo.Where) > 0 {
+		for key, val := range qo.Where {
+			where = append(where, fmt.Sprintf(`r["%s"] == "%s"`, key, val))
+		}
+		query = append(query, fmt.Sprintf(`filter(fn: (r) => %s)`, strings.Join(where, " and ")))
+	}
+
 	// only select specified column
 	query = append(query, fmt.Sprintf(`filter(fn: (r) => r["_field"] == "%s")`, column))
 
