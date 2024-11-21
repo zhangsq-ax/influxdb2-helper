@@ -18,6 +18,12 @@ type QueryOptions struct {
 }
 
 func (qo *QueryOptions) Validate() error {
+	if qo.TimeRange == nil {
+		return fmt.Errorf("timeRange is required")
+	}
+	if !isMillisecondTimestamp((*qo.TimeRange)[0]) || !isMillisecondTimestamp((*qo.TimeRange)[1]) {
+		return fmt.Errorf("timeRange must be millisecond timestamp")
+	}
 	if qo.Fields == nil || len(qo.Fields) == 0 {
 		return fmt.Errorf("fields is required")
 	}
@@ -114,4 +120,14 @@ func (qo *QueryOptions) CountString(field string) string {
 	query = append(query, fmt.Sprintf(`count(column: "%s")`, field))
 
 	return strings.Join(query, "\n|> ")
+}
+
+func isMillisecondTimestamp(ts int64) bool {
+	// 检查时间戳是否为毫秒级（通过值范围）
+	// 秒级时间戳范围大致为 0 到当前时间的值（< 2^31）
+	// 毫秒级时间戳范围为 10^12 到 10^13
+	if ts > 1000000000000 && ts < 10000000000000 {
+		return true
+	}
+	return false
 }
