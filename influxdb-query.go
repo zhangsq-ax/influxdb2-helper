@@ -59,7 +59,7 @@ func (qo *QueryOptions) String() string {
 	for _, field := range qo.Fields {
 		fields = append(fields, fmt.Sprintf(`r._field == "%s"`, field))
 	}
-	query = append(query, fmt.Sprintf(`filter(fn: (r) => %s`, strings.Join(fields, " or ")))
+	query = append(query, fmt.Sprintf(`filter(fn: (r) => %s)`, strings.Join(fields, " or ")))
 
 	// pivot clause
 	query = append(query, `pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`)
@@ -113,11 +113,12 @@ func (qo *QueryOptions) CountString(field string) string {
 	query = append(query, fmt.Sprintf(`filter(fn: (r) => r._field == "%s")`, field))
 
 	// pivot clause
-	query = append(query, `pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`)
+	//query = append(query, `pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`)
 
-	query = append(query, fmt.Sprintf(`keep(columns: ["%s"])`, field))
+	//query = append(query, fmt.Sprintf(`keep(columns: ["%s"])`, field))
 
-	query = append(query, fmt.Sprintf(`count(column: "%s")`, field))
+	//query = append(query, fmt.Sprintf(`count(column: "%s")`, field))
+	query = append(query, `count()`)
 
 	return strings.Join(query, "\n|> ")
 }
