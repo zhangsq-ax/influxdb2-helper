@@ -20,12 +20,18 @@ type InfluxdbHelper struct {
 	client   influxdb2.Client
 	writeAPI api.WriteAPIBlocking
 	queryAPI api.QueryAPI
+	debug    bool
 }
 
-func NewInfluxdbHelper(opts *InfluxdbHelperOptions) *InfluxdbHelper {
+func NewInfluxdbHelper(opts *InfluxdbHelperOptions, debug ...bool) *InfluxdbHelper {
+	isDebug := false
+	if len(debug) > 0 {
+		isDebug = debug[0]
+	}
 	return &InfluxdbHelper{
 		opts:   opts,
 		client: influxdb2.NewClient(opts.ServerUrl, opts.Token),
+		debug:  isDebug,
 	}
 }
 
@@ -62,6 +68,9 @@ func (ih *InfluxdbHelper) WriteByGenerator(ctx context.Context, measurement stri
 }
 
 func (ih *InfluxdbHelper) query(ctx context.Context, query string) (*api.QueryTableResult, error) {
+	if ih.debug {
+		fmt.Println("[QUERY]", query)
+	}
 	queryAPI := ih.getQueryAPI()
 	return queryAPI.Query(ctx, query)
 }
@@ -90,7 +99,7 @@ func (ih *InfluxdbHelper) Count(ctx context.Context, opts *QueryOptions, field s
 	}
 	count := int64(0)
 	for result.Next() {
-		count += result.Record().ValueByKey(field).(int64)
+		count += result.Record().ValueByKey("_value").(int64)
 	}
 	return count, nil
 }
