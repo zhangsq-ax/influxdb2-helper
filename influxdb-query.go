@@ -6,14 +6,22 @@ import (
 )
 
 type QueryOptions struct {
-	TimeRange   *[2]int64
+	TimeRange   *[2]int64 // 时间范围，[开始时间,结束时间]，单位为毫秒
 	BucketName  string
 	Measurement string
-	Where       map[string]string
-	Columns     []string
-	Limit       int64
-	Offset      int64
-	DescSort    bool
+	Where       map[string]string // 过滤条件
+	Fields      []string          // 指定要获取的 Field 字段，必须指定，否则有性能问题
+	Columns     []string          // 查询结果要返回的字段列表
+	Limit       int64             // 限制返回的记录数
+	Offset      int64             // 查询结果偏移
+	DescSort    bool              // 是否按时间倒序
+}
+
+func (qo *QueryOptions) Validate() error {
+	if qo.Fields == nil || len(qo.Fields) == 0 {
+		return fmt.Errorf("fields is required")
+	}
+	return nil
 }
 
 func (qo *QueryOptions) String() string {
@@ -40,6 +48,13 @@ func (qo *QueryOptions) String() string {
 		query = append(query, fmt.Sprintf(`filter(fn: (r) => %s)`, strings.Join(where, " and ")))
 	}
 
+	// field clause
+	fields := []string{}
+	for _, field := range qo.Fields {
+		fields = append(fields, fmt.Sprintf(`r._field == "%s"`, field))
+	}
+	query = append(query, fmt.Sprintf(`filter(fn: (r) => %s`, strings.Join(fields, " or ")))
+
 	// pivot clause
 	query = append(query, `pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`)
 
@@ -49,8 +64,6 @@ func (qo *QueryOptions) String() string {
 	// sort clause
 	if qo.DescSort {
 		query = append(query, `sort(columns: ["_time"], desc: true)`)
-	} else {
-		query = append(query, `sort(columns: ["_time"])`)
 	}
 
 	// select clause
@@ -66,7 +79,7 @@ func (qo *QueryOptions) String() string {
 	return strings.Join(query, "\n|> ")
 }
 
-func (qo *QueryOptions) CountString(column string) string {
+func (qo *QueryOptions) CountString(field string) string {
 	startTime := qo.TimeRange[0] / 1000
 	endTime := qo.TimeRange[1]/1000 + 1
 
@@ -90,15 +103,15 @@ func (qo *QueryOptions) CountString(column string) string {
 		query = append(query, fmt.Sprintf(`filter(fn: (r) => %s)`, strings.Join(where, " and ")))
 	}
 
-	// only select specified column
-	query = append(query, fmt.Sprintf(`filter(fn: (r) => r["_field"] == "%s")`, column))
+	// only select specified field
+	query = append(query, fmt.Sprintf(`filter(fn: (r) => r._field == "%s")`, field))
 
 	// pivot clause
 	query = append(query, `pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`)
 
-	query = append(query, fmt.Sprintf(`keep(columns: ["%s"])`, column))
+	query = append(query, fmt.Sprintf(`keep(columns: ["%s"])`, field))
 
-	query = append(query, fmt.Sprintf(`count(column: "%s")`, column))
+	query = append(query, fmt.Sprintf(`count(column: "%s")`, field))
 
 	return strings.Join(query, "\n|> ")
 }
