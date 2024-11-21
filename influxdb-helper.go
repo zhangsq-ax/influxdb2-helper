@@ -2,6 +2,7 @@ package influxdb2_helper
 
 import (
 	"context"
+	"fmt"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/influxdata/influxdb-client-go/v2/api/write"
@@ -60,26 +61,36 @@ func (ih *InfluxdbHelper) WriteByGenerator(ctx context.Context, measurement stri
 	return point, ih.Write(ctx, point)
 }
 
-func (ih *InfluxdbHelper) Query(ctx context.Context, query string) (*api.QueryTableResult, error) {
+func (ih *InfluxdbHelper) query(ctx context.Context, query string) (*api.QueryTableResult, error) {
 	queryAPI := ih.getQueryAPI()
 	return queryAPI.Query(ctx, query)
 }
 
 func (ih *InfluxdbHelper) QueryByOptions(ctx context.Context, opts *QueryOptions) (*api.QueryTableResult, error) {
-	return ih.Query(ctx, opts.String())
+	if opts == nil {
+		return nil, fmt.Errorf("opts is required")
+	}
+	err := opts.Validate()
+	if err != nil {
+		return nil, err
+	}
+	return ih.query(ctx, opts.String())
 }
 
 // Count returns the count of the column in the query
 // column must be a field in the measurement, not a tag
-func (ih *InfluxdbHelper) Count(ctx context.Context, opts *QueryOptions, column string) (int64, error) {
-	query := opts.CountString(column)
-	result, err := ih.Query(ctx, query)
+func (ih *InfluxdbHelper) Count(ctx context.Context, opts *QueryOptions, field string) (int64, error) {
+	if opts == nil {
+		return 0, fmt.Errorf("opts is required")
+	}
+	query := opts.CountString(field)
+	result, err := ih.query(ctx, query)
 	if err != nil {
 		return 0, err
 	}
 	count := int64(0)
 	for result.Next() {
-		count += result.Record().ValueByKey(column).(int64)
+		count += result.Record().ValueByKey(field).(int64)
 	}
 	return count, nil
 }
