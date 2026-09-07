@@ -100,6 +100,64 @@ for result.Next() {
 ...
 ```
 
+### Series page query (high performance)
+
+Use `QuerySeriesPage` for tagged list pages (for example filtering by `deviceId`). Compared with `QueryByOptions`:
+
+- `Limit` / `Offset` apply **per series**, not as a global limit across all tags
+- Flux does **not** run `group(columns: [])`, and applies `limit` **before** `pivot`
+- The response is buffered rows plus `HasMore` (probed with `Limit+1`); it does **not** return a total count
+
+```go
+...
+pageOpts := &idbHelper.SeriesQueryOptions{
+    TimeRange:   &[2]int64{1721059200000, 1721106016000},
+    BucketName:  "default",
+    Measurement: "iot_state",
+    Where: map[string]string{
+        "deviceId": "71922044000721a",
+    },
+    Fields:   []string{"x", "y", "yaw"},
+    Columns:  []string{"_time", "deviceId", "x", "y", "yaw"},
+    Limit:    100,
+    DescSort: true,
+}
+page, err := helper.QuerySeriesPage(context.Background(), pageOpts)
+if err != nil {
+    panic(err)
+}
+for _, row := range page.Records {
+    fmt.Println(row)
+}
+if page.HasMore {
+    fmt.Println("more data available; narrow TimeRange using the last row _time for the next page")
+}
+...
+```
+
+or
+
+```go
+...
+pageOpts := helper.NewSeriesQueryOptions(
+    "iot_state",
+    map[string]string{"deviceId": "71922044000721a"},
+    []string{"x", "y", "yaw"},
+    []string{"_time", "deviceId", "x", "y", "yaw"},
+    1721059200000,
+    1721106016000,
+    100,
+    0,
+)
+pageOpts.DescSort = true
+page, err := helper.QuerySeriesPage(context.Background(), pageOpts)
+...
+```
+
+> Prefer `QuerySeriesPage` when querying one device (or another single series). Keep using `QueryByOptions` when you need a **global** top-N across all tags after ungrouping.
+>
+> Deep paging: prefer moving `TimeRange` to the previous page's last `_time` instead of large `Offset`.
+
 ### Write
 
 #### Create InfluxDB Write Point

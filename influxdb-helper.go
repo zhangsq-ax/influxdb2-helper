@@ -30,7 +30,7 @@ func NewInfluxdbHelper(opts *InfluxdbHelperOptions, debug ...bool) *InfluxdbHelp
 	}
 	return &InfluxdbHelper{
 		opts:   opts,
-		client: influxdb2.NewClient(opts.ServerUrl, opts.Token),
+		client: influxdb2.NewClientWithOptions(opts.ServerUrl, opts.Token, influxdb2.DefaultOptions().SetUseGZip(true)),
 		debug:  isDebug,
 	}
 }
@@ -111,6 +111,60 @@ func (ih *InfluxdbHelper) NewQueryOptions(measurement string, where map[string]s
 		BucketName:  ih.opts.BucketName,
 		Measurement: measurement,
 		Where:       where,
+		Columns:     columns,
+		Limit:       limit,
+		Offset:      offset,
+	}
+}
+
+// QuerySeriesPage runs a per-series list query with Limit+1 probing.
+// Unlike QueryByOptions, Limit applies per series (no global ungroup), and the
+// result is buffered with HasMore instead of returning a total count.
+func (ih *InfluxdbHelper) QuerySeriesPage(ctx context.Context, opts *SeriesQueryOptions) (*SeriesPageResult, error) {
+	if opts == nil {
+		return nil, fmt.Errorf("opts is required")
+	}
+	if err := opts.Validate(); err != nil {
+		return nil, err
+	}
+
+	result, err := ih.query(ctx, opts.fluxString(opts.Limit+1))
+	if err != nil {
+		return nil, err
+	}
+
+	tables := make([][]map[string]interface{}, 0)
+	var current []map[string]interface{}
+	for result.Next() {
+		if result.TableChanged() {
+			if current != nil {
+				tables = append(tables, current)
+			}
+			current = make([]map[string]interface{}, 0)
+		}
+		if current == nil {
+			current = make([]map[string]interface{}, 0)
+		}
+		current = append(current, copyRecordValues(result.Record().Values()))
+	}
+	if err := result.Err(); err != nil {
+		return nil, err
+	}
+	if current != nil {
+		tables = append(tables, current)
+	}
+
+	return buildSeriesPage(tables, opts.Limit), nil
+}
+
+func (ih *InfluxdbHelper) NewSeriesQueryOptions(measurement string, where map[string]string, fields []string, columns []string, startTime, endTime, limit, offset int64) *SeriesQueryOptions {
+	timeRange := [2]int64{startTime, endTime}
+	return &SeriesQueryOptions{
+		TimeRange:   &timeRange,
+		BucketName:  ih.opts.BucketName,
+		Measurement: measurement,
+		Where:       where,
+		Fields:      fields,
 		Columns:     columns,
 		Limit:       limit,
 		Offset:      offset,

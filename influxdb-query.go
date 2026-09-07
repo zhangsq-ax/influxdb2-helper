@@ -2,6 +2,7 @@ package influxdb2_helper
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -31,53 +32,27 @@ func (qo *QueryOptions) Validate() error {
 }
 
 func (qo *QueryOptions) String() string {
-	startTime := qo.TimeRange[0] / 1000
-	endTime := qo.TimeRange[1]/1000 + 1
-
-	query := []string{}
-
-	// from clause
-	query = append(query, fmt.Sprintf(`from(bucket: "%s")`, qo.BucketName))
-
-	// time range clause
-	query = append(query, fmt.Sprintf(`range(start: %d, stop: %d)`, startTime, endTime))
-
-	// measurement clause
-	query = append(query, fmt.Sprintf(`filter(fn: (r) => r["_measurement"] == "%s")`, qo.Measurement))
-
-	// where clause
-	where := []string{}
-	if qo.Where != nil && len(qo.Where) > 0 {
-		for key, val := range qo.Where {
-			where = append(where, fmt.Sprintf(`r["%s"] == "%s"`, key, val))
-		}
-		query = append(query, fmt.Sprintf(`filter(fn: (r) => %s)`, strings.Join(where, " and ")))
+	query := []string{
+		fluxFromClause(qo.BucketName),
+		fluxRangeClause(qo.TimeRange),
+		fluxPredicateFilter(qo.Measurement, qo.Where, qo.Fields),
 	}
 
-	// field clause
-	fields := []string{}
-	for _, field := range qo.Fields {
-		fields = append(fields, fmt.Sprintf(`r._field == "%s"`, field))
+	if shouldDropStartStop(qo.Columns) {
+		query = append(query, `drop(columns: ["_start", "_stop"])`)
 	}
-	query = append(query, fmt.Sprintf(`filter(fn: (r) => %s)`, strings.Join(fields, " or ")))
 
-	// pivot clause
 	query = append(query, `pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`)
-
-	// force tags not to be grouped
 	query = append(query, `group(columns: [])`)
 
-	// sort clause
 	if qo.DescSort {
 		query = append(query, `sort(columns: ["_time"], desc: true)`)
 	}
 
-	// select clause
-	if qo.Columns != nil && len(qo.Columns) > 0 {
+	if len(qo.Columns) > 0 {
 		query = append(query, fmt.Sprintf(`keep(columns: ["%s"])`, strings.Join(qo.Columns, `","`)))
 	}
 
-	// pagination
 	if qo.Limit > 0 {
 		query = append(query, fmt.Sprintf(`limit(n: %d, offset: %d)`, qo.Limit, qo.Offset))
 	}
@@ -86,41 +61,67 @@ func (qo *QueryOptions) String() string {
 }
 
 func (qo *QueryOptions) CountString(field string) string {
-	startTime := qo.TimeRange[0] / 1000
-	endTime := qo.TimeRange[1]/1000 + 1
-
-	query := []string{}
-
-	// from clause
-	query = append(query, fmt.Sprintf(`from(bucket: "%s")`, qo.BucketName))
-
-	// time range clause
-	query = append(query, fmt.Sprintf(`range(start: %d, stop: %d)`, startTime, endTime))
-
-	// measurement clause
-	query = append(query, fmt.Sprintf(`filter(fn: (r) => r["_measurement"] == "%s")`, qo.Measurement))
-
-	// where clause
-	where := []string{}
-	if qo.Where != nil && len(qo.Where) > 0 {
-		for key, val := range qo.Where {
-			where = append(where, fmt.Sprintf(`r["%s"] == "%s"`, key, val))
-		}
-		query = append(query, fmt.Sprintf(`filter(fn: (r) => %s)`, strings.Join(where, " and ")))
+	query := []string{
+		fluxFromClause(qo.BucketName),
+		fluxRangeClause(qo.TimeRange),
+		fluxPredicateFilter(qo.Measurement, qo.Where, []string{field}),
+		`count()`,
+		`group(columns: [])`,
+		`sum()`,
 	}
 
-	// only select specified field
-	query = append(query, fmt.Sprintf(`filter(fn: (r) => r._field == "%s")`, field))
-
-	// pivot clause
-	//query = append(query, `pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")`)
-
-	//query = append(query, fmt.Sprintf(`keep(columns: ["%s"])`, field))
-
-	//query = append(query, fmt.Sprintf(`count(column: "%s")`, field))
-	query = append(query, `count()`)
-
 	return strings.Join(query, "\n|> ")
+}
+
+func fluxFromClause(bucketName string) string {
+	return fmt.Sprintf(`from(bucket: "%s")`, bucketName)
+}
+
+func fluxRangeClause(timeRange *[2]int64) string {
+	startNs := timeRange[0] * 1_000_000
+	stopNs := (timeRange[1] + 1) * 1_000_000
+	return fmt.Sprintf(`range(start: time(v: %d), stop: time(v: %d))`, startNs, stopNs)
+}
+
+func fluxPredicateFilter(measurement string, where map[string]string, fields []string) string {
+	preds := []string{
+		fmt.Sprintf(`r["_measurement"] == "%s"`, measurement),
+	}
+
+	if len(where) > 0 {
+		keys := make([]string, 0, len(where))
+		for key := range where {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			preds = append(preds, fmt.Sprintf(`r["%s"] == "%s"`, key, where[key]))
+		}
+	}
+
+	if len(fields) == 1 {
+		preds = append(preds, fmt.Sprintf(`r._field == "%s"`, fields[0]))
+	} else if len(fields) > 1 {
+		ors := make([]string, 0, len(fields))
+		for _, field := range fields {
+			ors = append(ors, fmt.Sprintf(`r._field == "%s"`, field))
+		}
+		preds = append(preds, fmt.Sprintf(`(%s)`, strings.Join(ors, " or ")))
+	}
+
+	return fmt.Sprintf(`filter(fn: (r) => %s)`, strings.Join(preds, " and "))
+}
+
+func shouldDropStartStop(columns []string) bool {
+	if len(columns) == 0 {
+		return false
+	}
+	for _, column := range columns {
+		if column == "_start" || column == "_stop" {
+			return false
+		}
+	}
+	return true
 }
 
 func isMillisecondTimestamp(ts int64) bool {
