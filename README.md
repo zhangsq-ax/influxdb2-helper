@@ -40,7 +40,8 @@ queryOpts := &idbHelper.QueryOptions{
     Where: map[string]string{
         "deviceId": "71922044000721a",
     },
-    Columns: []string{"_time", "deviceId", "..."},
+    Fields: []string{"x", "y", "yaw"},
+    Columns: []string{"_time", "deviceId", "x", "y", "yaw"},
     Limit: 100,
     Offset: 0,
     DescSort: true,
@@ -53,40 +54,29 @@ or
 ```go
 ...
 queryOpts := helper.NewQueryOptions("iot_state", map[string]string{}, []string{"_time", "deviceId", "..."}, 1721059200000, 1721106016000, 100, 0)
+queryOpts.Fields = []string{"x", "y", "yaw"}
 ...
 ```
 
-> **TimeRange** - Required. The time range for querying data, UTC timestamp in milliseconds
+> **TimeRange** - Required. The time range for querying data, UTC timestamp in milliseconds (inclusive).
 >
-> **BucketName** - Required. The name of bucket to query
+> **BucketName** - Required. The name of bucket to query.
 >
-> **Measurement** - Required. The name of measurement to query
+> **Measurement** - Required. The name of measurement to query.
 >
-> **Where** - Optional. Tag-based query and filter conditions. Currently only the "and" relationship is supported between multiple conditions. By Default, no conditional filtering is performed.
+> **Where** - Optional. Tag-based query and filter conditions. Currently only the "and" relationship is supported between multiple conditions. By default, no conditional filtering is performed.
+>
+> **Fields** - Required for `QueryByOptions`. Field names to fetch. Must be set to avoid scanning all fields.
 >
 > **Columns** - Optional. Columns returned by the query result. By default, all columns are returned.
 >
-> **Limit** - Optional. Return the limit of query result records. By default there is no limit on the number of records returned, but be aware that this may have performance issues.
+> **Limit** - Optional. Global limit after ungrouping all series. By default there is no limit, which may have performance issues on large ranges.
 >
-> **Offset** - Optinal. The number of records to skip when returning query results. Used together with the **Limit** parameter to implement query result paging.
+> **Offset** - Optional. Records to skip, used with **Limit** for paging. Prefer narrowing **TimeRange** for deep pages.
 >
 > **DescSort** - Optional. Whether to sort the query results in reverse order based on time.
 
 #### Query Data
-
-```go
-...
-result, err := helper.Query(context.Background(), queryOpts.String())
-if err != nil {
-  panic(err)
-}
-for result.Next() {
-  fmt.Println(result.Record().Values())
-}
-...
-```
-
-or
 
 ```go
 ...
@@ -97,6 +87,25 @@ if err != nil {
 for result.Next() {
   fmt.Println(result.Record().Values())
 }
+...
+```
+
+#### Count
+
+`Count` returns how many points match the filter for a single **field** (not a tag). It scans the full time range; for list APIs prefer `QuerySeriesPage` + `HasMore`, or cache count by query conditions.
+
+```go
+...
+total, err := helper.Count(context.Background(), &idbHelper.QueryOptions{
+    TimeRange:   queryOpts.TimeRange,
+    BucketName:  queryOpts.BucketName,
+    Measurement: queryOpts.Measurement,
+    Where:       queryOpts.Where,
+}, "x")
+if err != nil {
+    panic(err)
+}
+fmt.Println("total:", total)
 ...
 ```
 
@@ -154,9 +163,45 @@ page, err := helper.QuerySeriesPage(context.Background(), pageOpts)
 ...
 ```
 
-> Prefer `QuerySeriesPage` when querying one device (or another single series). Keep using `QueryByOptions` when you need a **global** top-N across all tags after ungrouping.
+> **TimeRange** / **BucketName** / **Measurement** / **Where** / **Fields** / **Columns** / **DescSort** - Same roles as `QueryOptions`. **Fields**, **BucketName**, **Measurement**, **TimeRange**, and **Limit > 0** are required.
 >
-> Deep paging: prefer moving `TimeRange` to the previous page's last `_time` instead of large `Offset`.
+> **Limit** - Required and must be `> 0`. Applies **per series**.
+>
+> **Offset** - Optional per-series offset. Prefer cursor-style **TimeRange** for deep paging.
+>
+> **PivotKeys** - Optional. `pivot` row keys; defaults to `["_time"]`. Use e.g. `["_time", "deviceId"]` when multiple tags share the same timestamp.
+>
+> Prefer `QuerySeriesPage` when querying one device (or another single series). Keep using `QueryByOptions` when you need a **global** top-N across all tags after ungrouping.
+
+#### Compatible list + total (optional)
+
+If the application API still returns `{ items, total }`, you can load the page with `QuerySeriesPage` and call `Count` once with the same filter (same `TimeRange` / `Where` / `Measurement` / field). For single-series queries (e.g. one `deviceId`) this usually matches the old response shape.
+
+```go
+...
+page, err := helper.QuerySeriesPage(context.Background(), pageOpts)
+if err != nil {
+    panic(err)
+}
+total, err := helper.Count(context.Background(), &idbHelper.QueryOptions{
+    TimeRange:   pageOpts.TimeRange,
+    BucketName:  pageOpts.BucketName,
+    Measurement: pageOpts.Measurement,
+    Where:       pageOpts.Where,
+}, "x")
+if err != nil {
+    panic(err)
+}
+// response: items = page.Records, total = total, optional hasMore = page.HasMore
+...
+```
+
+`Count` is still a full-range scan. To reduce cost when paging with the same filters:
+
+- Cache `total` by query key such as `bucket + measurement + where + timeRange + field` (do **not** include `Limit` / `Offset`)
+- Use a short TTL, or invalidate on write
+- If `TimeRange` ends at `now`, align the end timestamp (e.g. to the minute) before building the cache key, or hit rate will be low
+- If the UI only needs “next page”, prefer `page.HasMore` and skip `Count`
 
 ### Write
 
